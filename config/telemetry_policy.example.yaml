@@ -1,0 +1,58 @@
+dataset:
+  source: zenodo_tsv_zst
+  path: data/raw/2024-01.tsv.zst
+  availability_zone_id: aps1-az3
+  instance_type: inf2.8xlarge
+  product_description: Linux/UNIX
+
+encoder:
+  window_points: 20
+  stride_points: 4
+  baseline_period: 12
+
+policy:
+  hazard_floor: 0.82
+  rupture_floor: 0.38
+  coherence_ceiling: 0.48
+  recovery_hazard: 0.8
+  recovery_rupture: 0.3
+  history_window: 8
+  min_hazard_delta: 0.005
+  min_rupture_delta: 0.01
+  hazard_weight: 0.6
+  rupture_weight: 0.9
+  hazard_delta_weight: 3.0
+  rupture_delta_weight: 2.5
+  low_coherence_bias: 0.08
+  entropy_gap_bias: 0.08
+  signature_bias: 0.1
+  min_entropy_gap: 0.42
+  score_observe_threshold: 0.95
+  score_migrate_threshold: 1.08
+  min_consecutive_signals: 1
+  cooldown_windows: 4
+  emergency_hazard: 0.92
+  emergency_rupture: 0.52
+  signature_coherence_ceiling: 0.45
+  signature_entropy_floor: 0.93
+
+baseline:
+  rolling_window_points: 12
+  price_zscore_threshold: 1.75
+  price_zscore_observe: 1.1
+  price_multiplier_threshold: 1.12
+  velocity_std_multiplier: 1.2
+  cooldown_points: 4
+
+replay:
+  event_lookahead_points: 8
+  event_spike_multiplier: 1.12
+  event_spike_absolute: 0.05
+  event_attribution_lookback_points: 8
+  output_dir: output/replay
+
+operator:
+  workload_id: aps1-inf2-replay
+  action_log_path: output/replay/simulated_operator.jsonl
+  redis_url:
+  redis_key_prefix: spotfsm:replay

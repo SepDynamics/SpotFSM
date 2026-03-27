@@ -7,8 +7,8 @@ The core `ByteStreamManifold` engine turns rolling metric windows into structura
 ## Status
 
 - Phase 1 complete: the C++ manifold engine was isolated as `manifold_engine`, and the Python encoder was generalized from market candles to arbitrary telemetry.
-- Phase 2 implemented in-repo: SpotFSM now has a pluggable telemetry bridge for `Prometheus` and `CloudWatch`, plus a polling CLI that emits the latest encoded window per metric as JSON.
-- Phase 3 and 4 remain: operator actions, historical backtesting against spot records, and a live demonstration layer.
+- Phase 2 complete: SpotFSM can poll Prometheus and CloudWatch metrics through the bridge in [scripts/telemetry_bridge](/sep/SpotFSM/scripts/telemetry_bridge).
+- Phase 3 implemented: SpotFSM now includes a real-data replay harness, a stateful migration policy, and a simulated operator in [scripts/spotfsm](/sep/SpotFSM/scripts/spotfsm).
 
 ## Phase 2 Bridge
 
@@ -16,9 +16,20 @@ The bridge lives under [scripts/telemetry_bridge](/sep/SpotFSM/scripts/telemetry
 
 1. Pulls a fixed-step metric series from Prometheus `query_range` or CloudWatch `GetMetricData`.
 2. Converts the series into `TelemetryPoint` windows using z-score and velocity bucketization.
-3. Runs the latest window through `manifold_engine` and emits a JSON record containing the current signature, hazard, and full encoded window payload.
+3. Runs the latest window through `manifold_engine` and emits the current signature, hazard, and full encoded window payload as JSON.
 
 Prometheus queries must resolve to a single time series. If a query returns multiple series, aggregate in PromQL first so the bridge is fed one metric stream per `metric_id`.
+
+## Phase 3 Replay
+
+Phase 3 adds four pieces under [scripts/spotfsm](/sep/SpotFSM/scripts/spotfsm):
+
+1. `datasets.py`: loads real AWS Spot price history from public Zenodo `.tsv.zst` archives or AWS CLI `describe-spot-price-history` JSON.
+2. `policy.py`: evaluates structural hazard, rupture, coherence, and adaptive deltas to decide `STABLE`, `OBSERVE`, or `MIGRATE`.
+3. `operator.py`: simulates `drain_node` / `request_new_instance` behavior and persists replay state in memory or Redis/Valkey.
+4. `replay.py`: runs a historical series through the encoder and policy, compares against a reactive price-only baseline, and writes CSV/JSON artifacts.
+
+The replay event metric is explicit: this harness infers future `price_spike` events from public price history. It does not claim to observe actual AWS interruption notices.
 
 ## Quick Start
 
@@ -29,48 +40,46 @@ make install
 make build-manifold-engine
 ```
 
-Copy or edit [config/telemetry_bridge.example.yaml](/sep/SpotFSM/config/telemetry_bridge.example.yaml) so the metrics reflect your environment, then run a single bridge poll:
+Run a bridge poll:
 
 ```bash
 make bridge-once
 ```
 
-Or run it continuously:
+List volatile public Spot series from a downloaded monthly archive:
 
 ```bash
-make bridge-poll
+make list-spot-series
 ```
 
-The CLI entrypoint is [scripts/telemetry_bridge/cli.py](/sep/SpotFSM/scripts/telemetry_bridge/cli.py) and prints JSONL to stdout. If `output_path` is set in the config, the same records are appended to disk for later analysis.
+Run the real-data replay using [config/telemetry_policy.example.yaml](/sep/SpotFSM/config/telemetry_policy.example.yaml):
 
-## Example Output
-
-Each poll emits one record per configured metric:
-
-```json
-{
-  "metric_id": "spot_price_estimate",
-  "provider": "prometheus",
-  "sample_count": 96,
-  "current_value": 0.274,
-  "window_ready": true,
-  "latest_signature": "c0.603_s0.000_e0.579",
-  "latest_hazard": 0.5726,
-  "error": null
-}
+```bash
+make replay-real
 ```
 
-If a source returns too few samples to fill one manifold window, the record is still emitted with `window_ready: false` and a descriptive error.
+The replay writes a decision trace CSV, a summary JSON report, and a simulated operator log under `output/replay/`.
+
+## Current Real-Data Example
+
+The example policy config targets the public January 2024 archive and replays:
+
+- `aps1-az3`
+- `inf2.8xlarge`
+- `Linux/UNIX`
+
+With the current example calibration, the structural policy is materially more selective than the reactive baseline on that stream while still catching most inferred spike events. The generated report lives at `output/replay/spot_aps1-az3_inf2.8xlarge_linux_unix_summary.json` after running the replay.
 
 ## Repo Layout
 
 - [src/core](/sep/SpotFSM/src/core): C++ structural manifold engine and pybind bindings.
 - [scripts/research/regime_manifold](/sep/SpotFSM/scripts/research/regime_manifold): generic telemetry encoder, decoder, analytics, and runtime loader.
 - [scripts/telemetry_bridge](/sep/SpotFSM/scripts/telemetry_bridge): Phase 2 connectors, service layer, and polling CLI.
-- [tests/test_telemetry_bridge.py](/sep/SpotFSM/tests/test_telemetry_bridge.py): bridge and codec regression tests.
+- [scripts/spotfsm](/sep/SpotFSM/scripts/spotfsm): Phase 3 loader, policy, replay harness, and operator.
+- [tests/test_telemetry_bridge.py](/sep/SpotFSM/tests/test_telemetry_bridge.py): bridge regression tests.
+- [tests/test_spotfsm_phase3.py](/sep/SpotFSM/tests/test_spotfsm_phase3.py): Phase 3 policy and dataset tests.
 
 ## Remaining Work
 
-- Phase 3: operator policy that translates hazard into `TRIGGER_MIGRATE` or equivalent workload action.
-- Phase 3: historical backtester against AWS spot price and interruption datasets.
+- Phase 3 extension: backtest against interruption labels if a labeled interruption dataset is added.
 - Phase 4: live visualization and cluster demonstration path.

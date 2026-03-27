@@ -11,23 +11,38 @@ This walkthrough reflects the current post-extraction state of the repository.
 
 ## Phase 2 Added
 
-- A new bridge package under [scripts/telemetry_bridge](/sep/SpotFSM/scripts/telemetry_bridge) supports:
+- A bridge package under [scripts/telemetry_bridge](/sep/SpotFSM/scripts/telemetry_bridge) supports:
   `Prometheus` range queries via `/api/v1/query_range`
   `CloudWatch` metric fetches via `GetMetricData`
 - A polling CLI at [scripts/telemetry_bridge/cli.py](/sep/SpotFSM/scripts/telemetry_bridge/cli.py) emits one JSON record per configured metric.
-- A sample config at [config/telemetry_bridge.example.yaml](/sep/SpotFSM/config/telemetry_bridge.example.yaml) shows one Prometheus spot-price stream and one CloudWatch workload-pressure stream.
-- The root [Makefile](/sep/SpotFSM/Makefile) now exposes `build-manifold-engine`, `bridge-once`, `bridge-poll`, and `test`.
+- A sample bridge config lives at [config/telemetry_bridge.example.yaml](/sep/SpotFSM/config/telemetry_bridge.example.yaml).
 
-## Verification Scope
+## Phase 3 Added
 
-- Connector parsing is covered by [tests/test_telemetry_bridge.py](/sep/SpotFSM/tests/test_telemetry_bridge.py).
-- Bridge service behavior is covered for both successful encoding and insufficient-window cases.
-- Decoder import and bucket reconstruction are covered so the generalized schema does not regress back to the removed candle format.
+- Real-data loaders in [scripts/spotfsm/datasets.py](/sep/SpotFSM/scripts/spotfsm/datasets.py) support:
+  public Zenodo monthly `.tsv.zst` archives
+  AWS CLI `describe-spot-price-history` JSON
+- The stateful migration policy in [scripts/spotfsm/policy.py](/sep/SpotFSM/scripts/spotfsm/policy.py) uses hazard, rupture, coherence, entropy gap, and rolling deltas to avoid simple threshold flapping.
+- The simulated operator in [scripts/spotfsm/operator.py](/sep/SpotFSM/scripts/spotfsm/operator.py) logs `MIGRATE` actions and persists replay state to memory or Redis.
+- The replay harness in [scripts/spotfsm/replay.py](/sep/SpotFSM/scripts/spotfsm/replay.py) compares SpotFSM against a reactive price-only baseline and writes CSV/JSON artifacts.
+- A sample replay config lives at [config/telemetry_policy.example.yaml](/sep/SpotFSM/config/telemetry_policy.example.yaml).
+
+## Real-Data Verification
+
+- A real public archive was downloaded locally: `data/raw/2024-01.tsv.zst`.
+- The current example replay uses `aps1-az3 / inf2.8xlarge / Linux/UNIX`.
+- The generated summary report is `output/replay/spot_aps1-az3_inf2.8xlarge_linux_unix_summary.json`.
+- The generated decision trace is `output/replay/spot_aps1-az3_inf2.8xlarge_linux_unix_decisions.csv`.
+
+## Test Coverage
+
+- Bridge parsing and service behavior are covered by [tests/test_telemetry_bridge.py](/sep/SpotFSM/tests/test_telemetry_bridge.py).
+- Policy behavior, AWS JSON loading, Zenodo `.tsv.zst` parsing, and spike-event detection are covered by [tests/test_spotfsm_phase3.py](/sep/SpotFSM/tests/test_spotfsm_phase3.py).
 
 ## Next Step
 
-Phase 3 should attach an operator policy to the bridge output:
+Phase 4 should visualize the replay and live bridge outputs together:
 
-- Define hazard thresholds and dwell logic for `TRIGGER_MIGRATE`.
-- Feed the bridge with historical spot price / interruption data for offline replay.
-- Compare hazard-led migrations against a naive threshold baseline on uptime and cost retention.
+- expose hazard and operator state in a dashboard stream
+- surface policy explanations alongside migration decisions
+- attach real cluster actions once K8s and cloud credentials are available

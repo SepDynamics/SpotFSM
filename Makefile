@@ -1,4 +1,4 @@
-.PHONY: install build-manifold-engine bridge-once bridge-poll test lint clean
+.PHONY: install build-manifold-engine bridge-once bridge-poll list-spot-series replay-real test lint clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -6,6 +6,7 @@ PYTEST ?= $(PYTHON) -m pytest
 PYTHONPATH ?= .
 BUILD_DIR ?= build
 BRIDGE_CONFIG ?= config/telemetry_bridge.example.yaml
+REPLAY_CONFIG ?= config/telemetry_policy.example.yaml
 
 install:
 	$(PIP) install --no-cache-dir -r requirements.txt
@@ -19,6 +20,12 @@ bridge-once:
 
 bridge-poll:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.telemetry_bridge.cli --config $(BRIDGE_CONFIG)
+
+list-spot-series:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.spotfsm.replay --config $(REPLAY_CONFIG) --list-top-series
+
+replay-real:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.spotfsm.replay --config $(REPLAY_CONFIG)
 
 test:
 	PYTHONPATH=$(PYTHONPATH) $(PYTEST)

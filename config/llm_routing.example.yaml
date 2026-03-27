@@ -1,4 +1,4 @@
-poll_interval_seconds: 30
+poll_interval_seconds: 600
 output_path: output/llm_routing.jsonl
 
 encoder:
@@ -16,17 +16,17 @@ llm_probe:
     - provider: openai
       model: gpt-4o-mini
       api_key_env: OPENAI_API_KEY
-      max_completion_tokens: 8
+      max_completion_tokens: 4
 
     - provider: anthropic
-      model: claude-3-5-haiku-latest
+      model: claude-haiku-4-5-20251001
       api_key_env: ANTHROPIC_API_KEY
-      max_completion_tokens: 8
+      max_completion_tokens: 4
 
     - provider: groq
       model: llama-3.1-8b-instant
-      api_key_env: GROQ_API_KEY
-      max_completion_tokens: 8
+      api_key_env: GROQ
+      max_completion_tokens: 4
 
 metrics:
   - metric_id: openai.gpt-4o-mini.ttft_ms
@@ -38,7 +38,7 @@ metrics:
       provider: openai
       signal: ttft_ms
 
-  - metric_id: anthropic.claude-3-5-haiku-latest.ttft_ms
+  - metric_id: anthropic.claude-haiku-4-5-20251001.ttft_ms
     provider: llm_probe
     lookback_points: 64
     period_seconds: 30
@@ -57,10 +57,10 @@ metrics:
       signal: tps
 
 routing:
-  primary_target: openai.gpt-4o-mini
+  primary_target: anthropic.claude-haiku-4-5-20251001
   provider_priority:
+    - anthropic.claude-haiku-4-5-20251001
     - openai.gpt-4o-mini
-    - anthropic.claude-3-5-haiku-latest
     - groq.llama-3.1-8b-instant
 
   structural_policy:
@@ -78,6 +78,6 @@ routing:
     recovery_windows: 4
 
 replay:
-  structural_metric_id: openai.gpt-4o-mini.ttft_ms
+  structural_metric_id: anthropic.claude-haiku-4-5-20251001.ttft_ms
   source_glob: output/probes/*.jsonl
   output_dir: output/llm_replay

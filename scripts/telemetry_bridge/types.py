@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+from scripts.llm_probe.types import parse_probe_metric_id
 from scripts.research.regime_manifold.types import EncodedWindow
 
 
@@ -69,6 +70,24 @@ class CloudWatchConnectionConfig:
 
 
 @dataclass(frozen=True)
+class LLMProbeConnectionConfig:
+    input_glob: str = "output/probes/*.jsonl"
+
+    @classmethod
+    def from_mapping(
+        cls, payload: Optional[Mapping[str, Any]]
+    ) -> Optional["LLMProbeConnectionConfig"]:
+        if not payload:
+            return None
+        input_glob = (
+            str(payload.get("input_glob", "")).strip()
+            or str(payload.get("output_path", "")).strip()
+            or "output/probes/*.jsonl"
+        )
+        return cls(input_glob=input_glob)
+
+
+@dataclass(frozen=True)
 class MetricDefinition:
     metric_id: str
     provider: str
@@ -89,9 +108,9 @@ class MetricDefinition:
         provider = str(payload.get("provider", "")).strip().lower()
         if not metric_id:
             raise ValueError("each metric requires metric_id")
-        if provider not in {"prometheus", "cloudwatch"}:
+        if provider not in {"prometheus", "cloudwatch", "llm_probe"}:
             raise ValueError(
-                f"metric '{metric_id}' must declare provider 'prometheus' or 'cloudwatch'"
+                f"metric '{metric_id}' must declare provider 'prometheus', 'cloudwatch', or 'llm_probe'"
             )
 
         labels = {str(k): str(v) for k, v in dict(payload.get("labels", {})).items()}
@@ -134,6 +153,8 @@ class MetricDefinition:
                 raise ValueError(
                     f"metric '{self.metric_id}' requires namespace and metric_name for CloudWatch"
                 )
+        if self.provider == "llm_probe":
+            parse_probe_metric_id(self.metric_id)
 
 
 @dataclass(frozen=True)
@@ -144,6 +165,7 @@ class BridgeConfig:
     output_path: Optional[str] = None
     prometheus: Optional[PrometheusConnectionConfig] = None
     cloudwatch: Optional[CloudWatchConnectionConfig] = None
+    llm_probe: Optional[LLMProbeConnectionConfig] = None
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "BridgeConfig":
@@ -162,6 +184,7 @@ class BridgeConfig:
             ),
             prometheus=PrometheusConnectionConfig.from_mapping(payload.get("prometheus")),
             cloudwatch=CloudWatchConnectionConfig.from_mapping(payload.get("cloudwatch")),
+            llm_probe=LLMProbeConnectionConfig.from_mapping(payload.get("llm_probe")),
         )
 
 

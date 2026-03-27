@@ -1,8 +1,0 @@
-portfolio:
-  per_trade_allocated_nav_pct: 0.01
-  exposure_scale: 1.0
-  broker_account_leverage: 50.0
-  max_margin_utilization: 0.80
-  max_total_positions: 80
-  max_positions_per_pair: 15
-  max_net_units_per_pair: 0

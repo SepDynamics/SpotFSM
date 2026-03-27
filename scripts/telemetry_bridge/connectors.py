@@ -1,17 +1,22 @@
-"""Prometheus and CloudWatch telemetry connectors for the Phase 2 bridge."""
+"""Telemetry connectors for Prometheus, CloudWatch, and LLM probe JSONL feeds."""
 
 from __future__ import annotations
 
+import json
 import math
+from glob import glob
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Protocol
 
 import requests
 
+from scripts.llm_probe.types import ProbeResult, parse_probe_metric_id
 from scripts.research.regime_manifold.types import TelemetryPoint
 
 from .types import (
     CloudWatchConnectionConfig,
+    LLMProbeConnectionConfig,
     MetricDefinition,
     PrometheusConnectionConfig,
 )
@@ -127,7 +132,7 @@ class CloudWatchMetricConnector:
         response = client.get_metric_data(
             MetricDataQueries=[
                 {
-                    "Id": "spotfsm",
+                    "Id": "telemetry",
                     "MetricStat": {
                         "Metric": {
                             "Namespace": metric.namespace,
@@ -174,6 +179,82 @@ class CloudWatchMetricConnector:
         client = session.client("cloudwatch", region_name=region)
         self._clients[region] = client
         return client
+
+
+class LLMProbeConnector:
+    """Load probe results written by the LLM poller and expose them as points."""
+
+    def __init__(self, config: LLMProbeConnectionConfig) -> None:
+        self.config = config
+
+    def fetch_points(
+        self, metric: MetricDefinition, *, end_time: Optional[datetime] = None
+    ) -> List[TelemetryPoint]:
+        if metric.provider != "llm_probe":
+            raise ConnectorError(
+                f"metric '{metric.metric_id}' is not configured for llm_probe"
+            )
+
+        provider, model, signal = parse_probe_metric_id(metric.metric_id)
+        cutoff_ms = int(
+            _ensure_utc(end_time or datetime.now(timezone.utc)).timestamp() * 1000
+        )
+
+        points: List[TelemetryPoint] = []
+        for candidate in sorted(glob(self.config.input_glob)):
+            points.extend(
+                self._load_points_from_file(
+                    Path(candidate),
+                    provider=provider,
+                    model=model,
+                    signal=signal,
+                    cutoff_ms=cutoff_ms,
+                )
+            )
+
+        points.sort(key=lambda point: point.timestamp_ms)
+        return points[-metric.lookback_points :]
+
+    def _load_points_from_file(
+        self,
+        path: Path,
+        *,
+        provider: str,
+        model: str,
+        signal: str,
+        cutoff_ms: int,
+    ) -> List[TelemetryPoint]:
+        points: List[TelemetryPoint] = []
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line_number, raw_line in enumerate(handle, start=1):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = ProbeResult.from_mapping(json.loads(line))
+                    except Exception as exc:
+                        raise ConnectorError(
+                            f"failed to parse probe record in {path}:{line_number}: {exc}"
+                        ) from exc
+
+                    if (
+                        record.provider != provider
+                        or record.model != model
+                        or record.timestamp_ms > cutoff_ms
+                    ):
+                        continue
+
+                    points.append(
+                        TelemetryPoint(
+                            timestamp_ms=record.timestamp_ms,
+                            value=record.value_for_signal(signal),
+                        )
+                    )
+        except OSError as exc:
+            raise ConnectorError(f"failed to read probe file '{path}': {exc}") from exc
+
+        return points
 
 
 def _parse_prometheus_values(values: Iterable[Iterable[Any]]) -> List[TelemetryPoint]:

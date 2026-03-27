@@ -1,124 +1,113 @@
 # Repo Transition Plan
 
-This repository is transitioning away from "AWS Spot interruption prediction"
-as its primary product claim.
+This repository is transitioning away from AWS Spot and Kubernetes
+workload-health framing as its primary product claim.
 
-The retained core is the byte-stream structural manifold engine plus the live
-telemetry bridge. The next target problem is Kubernetes workload health and
-failure-risk detection, because it offers better signals, clearer labels, and a
-more honest evaluation path than public Spot price history.
+The retained core is the structural manifold engine plus the live telemetry
+bridge. The active target is **LLM API health monitoring and preemptive traffic
+routing**, because it matches the existing bridge architecture and offers public
+incident labels for replay.
 
 ## Started In This Slice
 
-- Local `pytest` collection is pinned to this checkout instead of leaking to a
-  sibling `scripts` package.
-- Top-level docs now mark the Spot replay as legacy scope.
-- A K8s workload-health bridge config exists for the next validation step.
-- A new `scripts/telemetry_replay` module now holds generic action-to-event
-  attribution logic extracted from the Spot replay path.
+- Removed the stale trading-era configs that no longer belong in the main tree.
+- Added a shared LLM routing config and a new `scripts/llm_probe` package for
+  raw probe collection.
+- Extended the generic bridge to read `llm_probe` JSONL as a first-class
+  telemetry source.
+- Reframed top-level docs and Make targets around LLM API health.
 
 ## Decision
 
 - Keep the generic telemetry engine, encoder, and bridge.
-- Treat `scripts/spotfsm` as a legacy replay package until a generic replay
-  surface replaces it.
-- Do not invest further in `price_spike` proxy events as the main evaluation
-  story.
-- Validate one labeled workload-health problem before renaming the repository.
+- Keep `scripts/spotfsm` only as a legacy replay/operator reference.
+- Stop presenting Kubernetes workload health as the next repo thesis.
+- Validate lead-time advantage against real provider incidents before any repo
+  rename.
 
 ## What Stays
 
 - `src/core`: structural byte-stream engine and pybind extension.
 - `scripts/research/regime_manifold`: generic telemetry encoding and decoding.
-- `scripts/telemetry_bridge`: Prometheus and CloudWatch polling path.
-- Existing tests around the bridge and encoder.
+- `scripts/telemetry_bridge`: live polling and manifold window generation.
+- `scripts/telemetry_replay`: generic action-to-event attribution helpers.
+- Existing bridge and legacy replay tests.
 
 ## What Becomes Legacy
 
 - `scripts/spotfsm`: AWS Spot-specific loaders, replay harness, and policy
   framing.
 - `config/telemetry_policy.example.yaml`: legacy replay example.
-- Spot-focused README claims and replay conclusions.
+- Spot-specific docs, claims, and evaluation framing.
 
 ## What Must Be Added
 
-- A generic replay/event-ingestion surface that does not assume Spot prices.
-- Kubernetes-oriented configs and docs for collecting candidate signals.
-- Workload-health event loaders for real outcomes such as OOM kills, evictions,
-  restart bursts, or incident windows.
-- Baselines that match the new domain instead of price-only migration logic.
+- A provider-routing policy that converts structural hazard into primary/fallback
+  routing actions.
+- Replay ingestion for public incident windows from provider status pages.
+- Baselines that match the new domain, such as timeout/error-only routing.
+- Longer-running probe collection to build a real replay corpus.
 
 ## Transition Phases
 
-### Phase 0: Stabilize The Current Tree
+### Phase 0: Repo Cleanup
 
-- Add package boundaries so tests import from this repo reliably.
-- Mark SpotFSM as a legacy/example module in top-level docs.
-- Add K8s-oriented bridge configs and transition docs.
-
-Acceptance criteria:
-
-- `pytest` collects from this checkout without import leakage.
-- README no longer presents AWS Spot replay as the future product thesis.
-
-### Phase 1: K8s Signal Validation
-
-- Use Prometheus to poll 3-5 candidate workload-health signals for one target
-  namespace or workload.
-- Verify each query aggregates to a single time series per metric.
-- Record short historical windows and inspect manifold signatures around known
-  bad periods.
-
-Candidate signals:
-
-- CPU throttle ratio
-- Memory pressure ratio
-- Restart velocity
-- Pending pod pressure
+- Remove dead trading configs and unrelated research leftovers.
+- Mark `scripts/spotfsm` as legacy in docs instead of active scope.
+- Replace the K8s forward plan with the LLM routing thesis.
 
 Acceptance criteria:
 
-- At least one workload has a reproducible signal set and a labeled failure
-  class worth replaying.
+- Top-level docs no longer point to Kubernetes as the next validation target.
+- The tree does not carry the obviously stale trading configs in active scope.
 
-### Phase 2: Generic Replay Surface
+### Phase 1: LLM API Probe Collection
 
-- Extract generic event/replay types from the Spot-specific package.
-- Support telemetry streams plus labeled events without embedding domain names
-  like `price` or `interruption`.
-- Keep the operator/policy comparison structure, but rename it for generic
-  workload actions.
+- Poll each configured provider/model with a short deterministic prompt.
+- Record `ttft_ms`, `total_latency_ms`, `tps`, `error`, and token usage as JSONL.
+- Keep the raw probe output under `output/probes/` as the future replay corpus.
 
 Acceptance criteria:
 
-- Replay code can run on non-Spot telemetry without adapter hacks.
+- `make probe-once` writes valid probe records for configured targets.
+- Probe JSONL can be accumulated over time without schema changes.
 
-### Phase 3: Honest K8s Evaluation
+### Phase 2: Bridge Integration
 
-- Ingest real events such as `OOMKilled`, `Evicted`, restart cascades, or
-  incident windows from cluster data.
-- Compare structural policy against simple reactive baselines.
-- Measure lead time, avoidance/recall, and false-positive burden.
-
-Acceptance criteria:
-
-- Results are based on real labels rather than proxy spikes.
-- The new domain shows a credible lead-time advantage or the pivot is aborted.
-
-### Phase 4: Repo Rename And Archive
-
-- Rename the repository only after Phase 3 produces a credible result.
-- Move `scripts/spotfsm` under a `legacy/` or `archive/` path if still needed.
-- Remove or relocate stale trading configs that no longer belong in the main
-  story.
+- Treat each `provider.model.signal` combination as one metric stream.
+- Read raw probe JSONL through the existing `TelemetrySource` surface.
+- Reuse the current encoder, manifold engine, and bridge service unchanged.
 
 Acceptance criteria:
 
-- Top-level naming matches the validated problem, not the discarded thesis.
+- `make bridge-once` can emit structural observations from probe history.
+- No domain-specific changes are required in `src/core` or the encoder.
+
+### Phase 3: Routing Policy
+
+- Adapt the legacy migration policy into provider-routing semantics.
+- Map `STABLE` to primary, `OBSERVE` to prepare fallback, and `MIGRATE` to route.
+- Add cooldown and recovery logic so the router does not flap between providers.
+
+Acceptance criteria:
+
+- Structural routing decisions can be simulated against probe history.
+- Recovery logic requires sustained stability before reverting to primary.
+
+### Phase 4: Validation And Replay
+
+- Ingest public provider incident windows from status pages or aggregators.
+- Compare structural routing against timeout/error-only baselines.
+- Measure lead time, recall, and false-positive burden.
+
+Acceptance criteria:
+
+- Results are grounded in real incident timestamps rather than proxy labels.
+- The repo has a credible claim about preemptive detection or the pivot stops.
 
 ## Immediate Backlog
 
-1. Choose one target namespace/workload and tune the K8s PromQL selectors for it.
-2. Capture a first real telemetry sample with `make bridge-once-k8s`.
-3. Extract generic replay/event types beyond attribution helpers.
-4. Add a real K8s event loader for OOM, eviction, or restart-incident labels.
+1. Run the new probe collector long enough to build a nontrivial JSONL corpus.
+2. Add provider-routing policy and replay surfaces on top of the existing bridge output.
+3. Ingest public incident windows from provider status pages.
+4. Measure lead time against a simple reactive timeout/error baseline.

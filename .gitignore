@@ -89,7 +89,6 @@ data/
 # Logs and output
 *.log
 output/*
-!output/live_params.json
 !output/models/
 !output/models/*
 !output/ml_data/
@@ -160,6 +159,11 @@ OANDA.env
 *.key
 *.pem
 config/secrets/
+config/mean_reversion_strategy.yaml
+config/optimization_*.yaml
+config/live_params.json
+config/pip_scales.json
+config/portfolio_policy.yaml
 
 # Docker
 !.dockerignore

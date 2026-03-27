@@ -1,0 +1,57 @@
+poll_interval_seconds: 30
+output_path: output/llm_routing.jsonl
+
+encoder:
+  window_points: 32
+  stride_points: 8
+  baseline_period: 60
+
+llm_probe:
+  output_path: output/probes/llm_probe.jsonl
+  input_glob: output/probes/*.jsonl
+  prompt: Reply with exactly: OK
+  connect_timeout_seconds: 10
+  request_timeout_seconds: 30
+  targets:
+    - provider: openai
+      model: gpt-4o-mini
+      api_key_env: OPENAI_API_KEY
+      max_completion_tokens: 8
+
+    - provider: anthropic
+      model: claude-3-5-haiku-latest
+      api_key_env: ANTHROPIC_API_KEY
+      max_completion_tokens: 8
+
+    - provider: groq
+      model: llama-3.1-8b-instant
+      api_key_env: GROQ_API_KEY
+      max_completion_tokens: 8
+
+metrics:
+  - metric_id: openai.gpt-4o-mini.ttft_ms
+    provider: llm_probe
+    lookback_points: 64
+    period_seconds: 30
+    labels:
+      role: llm-routing
+      provider: openai
+      signal: ttft_ms
+
+  - metric_id: anthropic.claude-3-5-haiku-latest.ttft_ms
+    provider: llm_probe
+    lookback_points: 64
+    period_seconds: 30
+    labels:
+      role: llm-routing
+      provider: anthropic
+      signal: ttft_ms
+
+  - metric_id: groq.llama-3.1-8b-instant.tps
+    provider: llm_probe
+    lookback_points: 64
+    period_seconds: 30
+    labels:
+      role: llm-routing
+      provider: groq
+      signal: tps

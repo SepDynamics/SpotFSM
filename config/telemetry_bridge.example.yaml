@@ -15,24 +15,25 @@ cloudwatch:
   profile:
 
 metrics:
-  - metric_id: spot_price_estimate
+  - metric_id: api_gateway_latency_p95
     provider: prometheus
-    query: max(aws_spot_price_usd{instance_type="m6i.large",availability_zone="us-east-1a"})
+    query: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m])))
     period_seconds: 60
     lookback_points: 96
     labels:
-      role: spot-price
-      instance_type: m6i.large
-      az: us-east-1a
+      role: app-health
+      signal: latency-p95
+      workload: api-gateway
 
-  - metric_id: ci_runner_cpu
+  - metric_id: worker_queue_depth
     provider: cloudwatch
-    namespace: AWS/EC2
-    metric_name: CPUUtilization
-    statistic: Average
+    namespace: AWS/SQS
+    metric_name: ApproximateNumberOfMessagesVisible
+    statistic: Maximum
     period_seconds: 60
     lookback_points: 96
     dimensions:
-      AutoScalingGroupName: ci-runner-spot
+      QueueName: inference-worker
     labels:
-      role: workload-pressure
+      role: app-health
+      signal: queue-depth

@@ -10,6 +10,7 @@ from scripts.research.regime_manifold.types import CanonicalFeatures, EncodedWin
 from scripts.telemetry_bridge.connectors import (
     CloudWatchMetricConnector,
     ConnectorError,
+    LLMProbeConnector,
     PrometheusRangeConnector,
 )
 from scripts.telemetry_bridge.service import BridgeService
@@ -17,6 +18,7 @@ from scripts.telemetry_bridge.types import (
     BridgeConfig,
     CloudWatchConnectionConfig,
     EncoderSettings,
+    LLMProbeConnectionConfig,
     MetricDefinition,
     PrometheusConnectionConfig,
 )
@@ -148,6 +150,57 @@ def test_cloudwatch_connector_parses_and_sorts_metric_data():
     request = client.calls[0]["MetricDataQueries"][0]["MetricStat"]["Metric"]
     assert request["Namespace"] == "AWS/EC2"
     assert request["MetricName"] == "CPUUtilization"
+
+
+def test_llm_probe_connector_reads_jsonl_signal(tmp_path):
+    probe_path = tmp_path / "llm_probe.jsonl"
+    probe_path.write_text(
+        "\n".join(
+            [
+                '{"provider":"openai","model":"gpt-4o-mini","timestamp_ms":1000,"ttft_ms":120.0,"total_latency_ms":250.0,"tps":4.0,"error":false,"http_status":200,"prompt_tokens":6,"completion_tokens":1}',
+                '{"provider":"openai","model":"gpt-4o-mini","timestamp_ms":2000,"ttft_ms":140.0,"total_latency_ms":300.0,"tps":3.33,"error":false,"http_status":200,"prompt_tokens":6,"completion_tokens":1}',
+                '{"provider":"anthropic","model":"claude-3-5-haiku-latest","timestamp_ms":2000,"ttft_ms":90.0,"total_latency_ms":180.0,"tps":5.0,"error":false,"http_status":200,"prompt_tokens":6,"completion_tokens":1}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    connector = LLMProbeConnector(
+        LLMProbeConnectionConfig(input_glob=str(probe_path))
+    )
+    metric = MetricDefinition(
+        metric_id="openai.gpt-4o-mini.ttft_ms",
+        provider="llm_probe",
+        period_seconds=30,
+        lookback_points=2,
+    )
+
+    points = connector.fetch_points(metric)
+
+    assert [point.timestamp_ms for point in points] == [1000, 2000]
+    assert [point.value for point in points] == [120.0, 140.0]
+
+
+def test_bridge_config_accepts_llm_probe_metrics():
+    config = BridgeConfig.from_mapping(
+        {
+            "output_path": "output/llm_routing.jsonl",
+            "llm_probe": {"input_glob": "output/probes/*.jsonl"},
+            "metrics": [
+                {
+                    "metric_id": "groq.llama-3.1-8b-instant.tps",
+                    "provider": "llm_probe",
+                    "period_seconds": 30,
+                    "lookback_points": 64,
+                }
+            ],
+        }
+    )
+
+    assert config.llm_probe is not None
+    assert config.llm_probe.input_glob == "output/probes/*.jsonl"
+    assert config.metrics[0].provider == "llm_probe"
 
 
 def test_bridge_service_emits_latest_window(monkeypatch):

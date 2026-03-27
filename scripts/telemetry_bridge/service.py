@@ -7,7 +7,12 @@ from typing import Dict, List, Optional
 
 from scripts.research.regime_manifold.encoder import TelemetryManifoldEncoder
 
-from .connectors import CloudWatchMetricConnector, TelemetrySource, PrometheusRangeConnector
+from .connectors import (
+    CloudWatchMetricConnector,
+    LLMProbeConnector,
+    PrometheusRangeConnector,
+    TelemetrySource,
+)
 from .types import BridgeConfig, BridgeObservation, MetricDefinition
 
 
@@ -108,6 +113,7 @@ def build_bridge_service(
     *,
     prometheus_connector: Optional[PrometheusRangeConnector] = None,
     cloudwatch_connector: Optional[CloudWatchMetricConnector] = None,
+    llm_probe_connector: Optional[LLMProbeConnector] = None,
     encoder: Optional[TelemetryManifoldEncoder] = None,
 ) -> BridgeService:
     connectors: Dict[str, TelemetrySource] = {}
@@ -125,6 +131,13 @@ def build_bridge_service(
             raise ValueError("bridge config uses CloudWatch metrics but no cloudwatch block is configured")
         connectors["cloudwatch"] = cloudwatch_connector or CloudWatchMetricConnector(
             config.cloudwatch
+        )
+
+    if "llm_probe" in providers:
+        if config.llm_probe is None and llm_probe_connector is None:
+            raise ValueError("bridge config uses llm_probe metrics but no llm_probe block is configured")
+        connectors["llm_probe"] = llm_probe_connector or LLMProbeConnector(
+            config.llm_probe
         )
 
     return BridgeService(config, connectors=connectors, encoder=encoder)

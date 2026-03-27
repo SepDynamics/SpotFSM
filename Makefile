@@ -1,12 +1,11 @@
-.PHONY: install build-manifold-engine bridge-once bridge-poll bridge-once-k8s list-spot-series replay-real test lint clean
+.PHONY: install build-manifold-engine probe-once probe-poll bridge-once bridge-poll list-spot-series replay-real test lint clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
 PYTEST ?= $(PYTHON) -m pytest
 PYTHONPATH ?= .
 BUILD_DIR ?= build
-BRIDGE_CONFIG ?= config/telemetry_bridge.example.yaml
-K8S_BRIDGE_CONFIG ?= config/k8s_workload_health_bridge.example.yaml
+BRIDGE_CONFIG ?= config/llm_routing.example.yaml
 REPLAY_CONFIG ?= config/telemetry_policy.example.yaml
 
 install:
@@ -16,14 +15,17 @@ build-manifold-engine:
 	cmake -S . -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --target manifold_engine -j
 
+probe-once:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.llm_probe.poller --config $(BRIDGE_CONFIG) --once
+
+probe-poll:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.llm_probe.poller --config $(BRIDGE_CONFIG)
+
 bridge-once:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.telemetry_bridge.cli --config $(BRIDGE_CONFIG) --once
 
 bridge-poll:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.telemetry_bridge.cli --config $(BRIDGE_CONFIG)
-
-bridge-once-k8s:
-	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.telemetry_bridge.cli --config $(K8S_BRIDGE_CONFIG) --once
 
 list-spot-series:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.spotfsm.replay --config $(REPLAY_CONFIG) --list-top-series

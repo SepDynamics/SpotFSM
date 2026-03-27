@@ -60,6 +60,12 @@ make bridge-once
 Raw probe results append to `output/probes/*.jsonl`. Bridge observations append
 to `output/llm_routing.jsonl`.
 
+Run the routing replay against accumulated probe history:
+
+```bash
+make replay-llm
+```
+
 ## Config Surface
 
 The shared example config in

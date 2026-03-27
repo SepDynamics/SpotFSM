@@ -9,7 +9,7 @@ encoder:
 llm_probe:
   output_path: output/probes/llm_probe.jsonl
   input_glob: output/probes/*.jsonl
-  prompt: Reply with exactly: OK
+  prompt: "Reply with exactly: OK"
   connect_timeout_seconds: 10
   request_timeout_seconds: 30
   targets:
@@ -55,3 +55,29 @@ metrics:
       role: llm-routing
       provider: groq
       signal: tps
+
+routing:
+  primary_target: openai.gpt-4o-mini
+  provider_priority:
+    - openai.gpt-4o-mini
+    - anthropic.claude-3-5-haiku-latest
+    - groq.llama-3.1-8b-instant
+
+  structural_policy:
+    hazard_floor: 0.75
+    rupture_floor: 0.35
+    score_observe_threshold: 0.95
+    score_route_threshold: 1.05
+    cooldown_windows: 4
+    recovery_windows: 8
+
+  timeout_policy:
+    ttft_timeout_ms: 10000
+    recovery_ttft_ms: 2500
+    cooldown_points: 1
+    recovery_windows: 4
+
+replay:
+  structural_metric_id: openai.gpt-4o-mini.ttft_ms
+  source_glob: output/probes/*.jsonl
+  output_dir: output/llm_replay

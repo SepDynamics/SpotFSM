@@ -1,4 +1,4 @@
-.PHONY: install build-manifold-engine probe-once probe-poll bridge-once bridge-poll list-spot-series replay-real test lint clean
+.PHONY: install build-manifold-engine probe-once probe-poll bridge-once bridge-poll replay-llm list-spot-series replay-real test lint clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -26,6 +26,9 @@ bridge-once:
 
 bridge-poll:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.telemetry_bridge.cli --config $(BRIDGE_CONFIG)
+
+replay-llm:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.llm_routing.replay --config $(BRIDGE_CONFIG)
 
 list-spot-series:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m scripts.spotfsm.replay --config $(REPLAY_CONFIG) --list-top-series

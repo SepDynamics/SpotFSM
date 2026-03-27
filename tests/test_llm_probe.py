@@ -171,3 +171,44 @@ def test_probe_returns_error_record_on_transport_failure():
     assert result.provider == "openai"
     assert result.http_status == 0
     assert result.error is True
+
+
+def test_probe_once_skips_targets_with_missing_api_keys():
+    session = DummySession(
+        [
+            DummyStreamingResponse(
+                200,
+                [
+                    'data: {"choices":[{"delta":{"content":"OK"}}]}',
+                    "",
+                    'data: {"choices":[],"usage":{"prompt_tokens":6,"completion_tokens":1}}',
+                    "",
+                    "data: [DONE]",
+                    "",
+                ],
+            )
+        ]
+    )
+    poller = LLMProbePoller(
+        LLMProbeConfig(
+            targets=(
+                ProbeTarget(
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    api_key_env="OPENAI_API_KEY",
+                ),
+                ProbeTarget(
+                    provider="groq",
+                    model="llama-3.1-8b-instant",
+                    api_key_env="GROQ_API_KEY",
+                ),
+            )
+        ),
+        session=session,
+        env={"OPENAI_API_KEY": "test-key"},
+    )
+
+    results = poller.probe_once()
+
+    assert len(results) == 1
+    assert results[0].provider == "openai"

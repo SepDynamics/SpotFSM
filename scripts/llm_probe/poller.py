@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
@@ -38,7 +39,13 @@ class LLMProbePoller:
         self.env = env if env is not None else os.environ
 
     def probe_once(self) -> List[ProbeResult]:
-        return [self.probe_target(target) for target in self.config.targets]
+        results: List[ProbeResult] = []
+        for target in self.config.targets:
+            try:
+                results.append(self.probe_target(target))
+            except ProbeConfigurationError as exc:
+                print(str(exc), file=sys.stderr, flush=True)
+        return results
 
     def probe_target(self, target: ProbeTarget) -> ProbeResult:
         api_key = self.env.get(target.api_key_env, "").strip()

@@ -11,8 +11,6 @@ pybind11_add_module(manifold_engine
     bindings.cpp
     byte_stream_manifold.cpp
     structural_entropy.cpp
-    manifold_builder.cpp
-    io_utils.cpp
 )
 
 target_link_libraries(manifold_engine PRIVATE sep_core_deps sep_fetchcontent_deps)

@@ -9,6 +9,8 @@ from typing import Dict, Iterable, List, Sequence
 
 from .types import EncodedWindow
 
+KNOWN_REGIMES = ("trend_up", "trend_down", "stable", "chaotic", "neutral")
+
 
 def _calculate_correlations(rows: List[EncodedWindow]) -> Dict[str, float]:
     coh = [row.metrics["coherence"] for row in rows]
@@ -39,16 +41,10 @@ def _calculate_correlations(rows: List[EncodedWindow]) -> Dict[str, float]:
 
 
 def _calculate_regime_breakdown(rows: List[EncodedWindow]) -> Dict[str, float]:
-    return {
-        regime: sum(1 for row in rows if row.canonical.regime == regime) / len(rows)
-        for regime in {
-            "trend_bull",
-            "trend_bear",
-            "mean_revert",
-            "chaotic",
-            "neutral",
-        }
-    }
+    counts: Dict[str, float] = {}
+    for regime in KNOWN_REGIMES:
+        counts[regime] = sum(1 for row in rows if row.canonical.regime == regime) / len(rows)
+    return counts
 
 
 def window_summary(windows: Iterable[EncodedWindow]) -> Dict[str, object]:
@@ -57,10 +53,16 @@ def window_summary(windows: Iterable[EncodedWindow]) -> Dict[str, object]:
     if not rows:
         return {"count": 0}
 
+    hazards = [row.metrics["hazard"] for row in rows]
     return {
         "count": len(rows),
         "corr": _calculate_correlations(rows),
         "regime_breakdown": _calculate_regime_breakdown(rows),
+        "hazard": {
+            "latest": hazards[-1],
+            "max": max(hazards),
+            "mean": statistics.fmean(hazards),
+        },
     }
 
 

@@ -5,6 +5,7 @@ import math
 import statistics
 from typing import Dict, List, Sequence, Tuple
 
+from .runtime import load_manifold_engine
 from .types import (
     BITS_PER_POINT,
     TelemetryPoint,
@@ -113,8 +114,7 @@ class StructuralAnalyzer:
 
     @staticmethod
     def analyze(bit_bytes: bytes) -> Tuple[str, Dict[str, float]]:
-        import manifold_engine
-
+        manifold_engine = load_manifold_engine()
         json_str = manifold_engine.analyze_bytes(
             bit_bytes, len(bit_bytes), len(bit_bytes), 3
         )

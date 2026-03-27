@@ -1,54 +1,65 @@
-"""Decoder for reconstructing signals from structural manifolds."""
+"""Decoder for reconstructing telemetry-oriented buckets from encoded windows."""
 
 from typing import Dict, List, Sequence
+
 from .types import (
-    BITS_PER_CANDLE,
+    BITS_PER_POINT,
+    EPSILON_ZSCORE,
     EncodedWindow,
-    DELTA_BUCKET_DIVISOR,
-    ATR_BUCKET_DIVISOR,
-    VOLUME_MULTIPLIER_HIGH,
-    VOLUME_MULTIPLIER_LOW,
+    MAX_VEL_BUCKET,
+    MAX_ZSCORE_BUCKET,
 )
 
 
-class MarketManifoldDecoder:
-    """Reconstruct bucket-level signals for inspection."""
+class TelemetryManifoldDecoder:
+    """Reconstruct bucket-level telemetry signals for inspection."""
 
     @staticmethod
     def decode_window_bits(window: EncodedWindow) -> List[Dict[str, float]]:
         bit_values = _bytes_to_bits(window.bits, window.bit_length)
         records: List[Dict[str, float]] = []
         idx = 0
-        delta_scale = window.codec_meta.get("delta_scale", 1.0)
-        atr_scale = window.codec_meta.get("atr_scale", 1.0)
-        volume_split = window.codec_meta.get("volume_split", 1.0)
 
-        while idx + BITS_PER_CANDLE <= len(bit_values):
+        baseline_mean = float(window.codec_meta.get("baseline_mean", 0.0))
+        baseline_std = max(
+            EPSILON_ZSCORE,
+            float(window.codec_meta.get("baseline_std", EPSILON_ZSCORE)),
+        )
+
+        while idx + BITS_PER_POINT <= len(bit_values):
             direction = bit_values[idx]
-            delta_bucket = _bits_to_int(bit_values[idx + 1 : idx + 4])
-            atr_bucket = _bits_to_int(bit_values[idx + 4 : idx + 6])
-            liquidity_flag = bit_values[idx + 6]
-            volume_flag = bit_values[idx + 7]
-            idx += BITS_PER_CANDLE
+            velocity_bucket = _bits_to_int(bit_values[idx + 1 : idx + 4])
+            zscore_bucket = _bits_to_int(bit_values[idx + 4 : idx + 6])
+            flags = _bits_to_int(bit_values[idx + 6 : idx + 8])
+            idx += BITS_PER_POINT
 
-            reconstructed_delta = (
-                (delta_bucket + 0.5) / DELTA_BUCKET_DIVISOR
-            ) * delta_scale
-            reconstructed_range = ((atr_bucket + 0.5) / ATR_BUCKET_DIVISOR) * atr_scale
-            reconstructed_volume = volume_split * (
-                VOLUME_MULTIPLIER_HIGH if volume_flag else VOLUME_MULTIPLIER_LOW
-            )
+            velocity_ratio = velocity_bucket / MAX_VEL_BUCKET if MAX_VEL_BUCKET else 0.0
+            zscore_ratio = zscore_bucket / MAX_ZSCORE_BUCKET if MAX_ZSCORE_BUCKET else 0.0
+
+            velocity_est = velocity_ratio * baseline_std * 2.0
+            if direction == 0:
+                velocity_est *= -1.0
+            if flags & 0b01:
+                velocity_est = 0.0
 
             records.append(
                 {
-                    "direction": direction,
-                    "abs_delta_est": reconstructed_delta,
-                    "atr_ratio_est": reconstructed_range,
-                    "liquidity_flag": liquidity_flag,
-                    "volume_est": reconstructed_volume,
+                    "direction": float(direction),
+                    "velocity_bucket": float(velocity_bucket),
+                    "velocity_est": velocity_est,
+                    "zscore_bucket": float(zscore_bucket),
+                    "zscore_est": zscore_ratio * 3.0,
+                    "is_extreme": float(bool(flags & 0b10)),
+                    "is_static": float(bool(flags & 0b01)),
+                    "baseline_mean": baseline_mean,
+                    "baseline_std": baseline_std,
                 }
             )
         return records
+
+
+class MarketManifoldDecoder(TelemetryManifoldDecoder):
+    """Backward-compatible alias for the old decoder name."""
 
 
 def _bits_to_int(bits: Sequence[int]) -> int:

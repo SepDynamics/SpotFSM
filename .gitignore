@@ -209,7 +209,7 @@ sep_historical_gates/
 tests/
 !tests/
 tests/*
-!tests/test_live_alignment.py
+!tests/test_*.py
 configs/research/
 
 # Allow committed testbed scenarios

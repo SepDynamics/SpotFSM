@@ -1,0 +1,38 @@
+poll_interval_seconds: 30
+output_path: output/telemetry_bridge.jsonl
+
+encoder:
+  window_points: 64
+  stride_points: 16
+  baseline_period: 60
+
+prometheus:
+  base_url: http://localhost:9090
+  timeout_seconds: 10
+
+cloudwatch:
+  region: us-east-1
+  profile:
+
+metrics:
+  - metric_id: spot_price_estimate
+    provider: prometheus
+    query: max(aws_spot_price_usd{instance_type="m6i.large",availability_zone="us-east-1a"})
+    period_seconds: 60
+    lookback_points: 96
+    labels:
+      role: spot-price
+      instance_type: m6i.large
+      az: us-east-1a
+
+  - metric_id: ci_runner_cpu
+    provider: cloudwatch
+    namespace: AWS/EC2
+    metric_name: CPUUtilization
+    statistic: Average
+    period_seconds: 60
+    lookback_points: 96
+    dimensions:
+      AutoScalingGroupName: ci-runner-spot
+    labels:
+      role: workload-pressure

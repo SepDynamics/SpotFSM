@@ -18,19 +18,29 @@ from .datasets import (
     DEFAULT_ZENODO_RECORD_ID,
     download_zenodo_file,
     load_aws_cli_spot_series,
+    load_interruption_labels_csv,
     load_zenodo_spot_series,
     scan_zenodo_top_series,
 )
 from .operator import InMemoryStateStore, RedisStateStore, SimulatedOperator
-from .policy import MigrationPolicy, ReactivePricePolicy
+from .policy import (
+    AlwaysMigratePolicy,
+    MigrationPolicy,
+    RandomPolicy,
+    ReactivePricePolicy,
+    RollingZScorePolicy,
+)
 from .types import (
+    AlwaysMigrateConfig,
     DecisionAction,
     MigrationDecision,
     OperatorConfig,
     PolicyConfig,
+    RandomConfig,
     ReactiveBaselineConfig,
     ReplayConfig,
     ReplayEvent,
+    RollingZScoreConfig,
     SpotPriceSeries,
     SpotPriceSeriesSelector,
 )
@@ -78,12 +88,17 @@ def run_replay(
     encoder: TelemetryManifoldEncoder,
     structural_policy: MigrationPolicy,
     reactive_policy: ReactivePricePolicy,
+    always_migrate_policy: AlwaysMigratePolicy,
+    zscore_policy: RollingZScorePolicy,
+    random_policy: RandomPolicy,
     replay_config: ReplayConfig,
     operator: SimulatedOperator,
     output_dir: str,
+    provided_events: Optional[List[ReplayEvent]] = None,
 ) -> Dict[str, object]:
     points = list(series.points)
-    events = detect_price_spike_events(points, replay_config)
+    events = provided_events if provided_events is not None else detect_price_spike_events(points, replay_config)
+    
     rows: List[Dict[str, object]] = []
     prefix: List[TelemetryPoint] = []
 
@@ -110,6 +125,10 @@ def run_replay(
             )
 
         reactive_decision = reactive_policy.evaluate(point)
+        always_migrate_decision = always_migrate_policy.evaluate(point)
+        zscore_decision = zscore_policy.evaluate(point)
+        random_decision = random_policy.evaluate(point)
+
         operator_record = operator.execute(structural_decision)
         event_here = next(
             (event for event in events if event.event_index == idx),
@@ -132,6 +151,10 @@ def run_replay(
                 "reactive_action": reactive_decision.action.value,
                 "reactive_score": reactive_decision.score,
                 "reactive_reasons": "|".join(reactive_decision.reasons),
+                "always_migrate_action": always_migrate_decision.action.value,
+                "zscore_action": zscore_decision.action.value,
+                "zscore_score": zscore_decision.score,
+                "random_action": random_decision.action.value,
                 "operator_state": operator_record.state,
                 "event_here": bool(event_here),
                 "event_type": event_here.event_type if event_here else "",
@@ -149,14 +172,16 @@ def run_replay(
         "events": [event.to_json() for event in events],
         "spotfsm": _summarize_policy(rows, events, policy_key="spotfsm", replay_config=replay_config),
         "reactive": _summarize_policy(rows, events, policy_key="reactive", replay_config=replay_config),
+        "always_migrate": _summarize_policy(rows, events, policy_key="always_migrate", replay_config=replay_config),
+        "zscore": _summarize_policy(rows, events, policy_key="zscore", replay_config=replay_config),
+        "random": _summarize_policy(rows, events, policy_key="random", replay_config=replay_config),
         "artifacts": {
             "decisions_csv": str(decisions_path),
             "summary_json": str(summary_path),
             "operator_log": str(operator.action_log_path),
         },
         "notes": [
-            "Replay events are inferred from future spot-price spikes in the public archive.",
-            "They are not actual AWS interruption notices.",
+            "Replay events are real AWS interruption notices." if provided_events else "Replay events are inferred from future spot-price spikes in the public archive. They are not actual AWS interruption notices.",
         ],
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
@@ -194,6 +219,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
     parser.add_argument("--top-series-limit", type=int, default=20)
     parser.add_argument("--output-dir", help="Override replay.output_dir from config.")
+    parser.add_argument(
+        "--interruption-events-csv",
+        help="Path to a CSV file containing real AWS Spot interruption notices.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     config_payload = _load_yaml(args.config) if args.config else {}
@@ -201,6 +230,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     encoder_settings = EncoderSettings.from_mapping(config_payload.get("encoder"))
     policy_config = PolicyConfig.from_mapping(config_payload.get("policy"))
     baseline_config = ReactiveBaselineConfig.from_mapping(config_payload.get("baseline"))
+    always_migrate_config = AlwaysMigrateConfig.from_mapping(config_payload.get("always_migrate"))
+    zscore_config = RollingZScoreConfig.from_mapping(config_payload.get("zscore"))
+    random_config = RandomConfig.from_mapping(config_payload.get("random"))
     replay_config = ReplayConfig.from_mapping(config_payload.get("replay"))
     operator_config = OperatorConfig.from_mapping(config_payload.get("operator"))
 
@@ -255,6 +287,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
     structural_policy = MigrationPolicy(policy_config)
     reactive_policy = ReactivePricePolicy(baseline_config)
+    always_migrate_policy = AlwaysMigratePolicy(always_migrate_config)
+    zscore_policy = RollingZScorePolicy(zscore_config)
+    random_policy = RandomPolicy(random_config)
 
     if operator_config.redis_url:
         state_store = RedisStateStore(
@@ -265,14 +300,38 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         state_store = InMemoryStateStore()
     operator = SimulatedOperator(operator_config, state_store=state_store)
 
+    provided_events = None
+    if args.interruption_events_csv:
+        raw_events = load_interruption_labels_csv(args.interruption_events_csv)
+        mapped_events = []
+        for e in raw_events:
+            # Map index by closest timestamp in points
+            closest_idx = min(range(len(series.points)), key=lambda i: abs(series.points[i].timestamp_ms - e.event_timestamp_ms))
+            mapped_events.append(
+                ReplayEvent(
+                    anchor_index=closest_idx,
+                    event_index=closest_idx,
+                    anchor_timestamp_ms=series.points[closest_idx].timestamp_ms,
+                    event_timestamp_ms=series.points[closest_idx].timestamp_ms,
+                    anchor_price=series.points[closest_idx].value,
+                    event_price=series.points[closest_idx].value,
+                    event_type=e.event_type
+                )
+            )
+        provided_events = mapped_events
+
     summary = run_replay(
         series,
         encoder=encoder,
         structural_policy=structural_policy,
         reactive_policy=reactive_policy,
+        always_migrate_policy=always_migrate_policy,
+        zscore_policy=zscore_policy,
+        random_policy=random_policy,
         replay_config=replay_config,
         operator=operator,
         output_dir=args.output_dir or replay_config.output_dir,
+        provided_events=provided_events,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

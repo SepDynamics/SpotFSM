@@ -15,6 +15,7 @@ import requests
 from scripts.research.regime_manifold.types import TelemetryPoint
 
 from .types import (
+    ReplayEvent,
     SpotPriceRecord,
     SpotPriceSeries,
     SpotPriceSeriesSelector,
@@ -219,3 +220,29 @@ def _iter_zenodo_rows(path: str) -> Iterator[SpotPriceRecord]:
 
 def _parse_timestamp_ms(value: str) -> int:
     return int(datetime.fromisoformat(value).timestamp() * 1000)
+
+
+def load_interruption_labels_csv(path: str) -> List[ReplayEvent]:
+    """Loads actual AWS interruption notices from a CSV file.
+    
+    Expected columns: timestamp_ms, price, event_type
+    The anchor_index and event_index will be mapped by replay.py later.
+    """
+    events = []
+    with Path(path).open("r", encoding="utf-8") as handle:
+        import csv
+        reader = csv.DictReader(handle)
+        for row in reader:
+            events.append(
+                ReplayEvent(
+                    anchor_index=-1, # Mapped later
+                    event_index=-1, # Mapped later
+                    anchor_timestamp_ms=int(row["timestamp_ms"]),
+                    event_timestamp_ms=int(row["timestamp_ms"]),
+                    anchor_price=float(row.get("price", 0.0)),
+                    event_price=float(row.get("price", 0.0)),
+                    event_type=row.get("event_type", "aws_interruption"),
+                )
+            )
+    events.sort(key=lambda e: e.event_timestamp_ms)
+    return events

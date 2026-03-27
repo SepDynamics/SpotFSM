@@ -5,10 +5,19 @@ from __future__ import annotations
 import statistics
 from collections import deque
 from typing import Deque, Dict, List, Optional
+import random
 
 from scripts.research.regime_manifold.types import EncodedWindow, TelemetryPoint
 
-from .types import DecisionAction, MigrationDecision, PolicyConfig, ReactiveBaselineConfig
+from .types import (
+    AlwaysMigrateConfig,
+    DecisionAction,
+    MigrationDecision,
+    PolicyConfig,
+    RandomConfig,
+    ReactiveBaselineConfig,
+    RollingZScoreConfig,
+)
 
 
 def parse_signature(signature: str) -> Dict[str, float]:
@@ -227,6 +236,114 @@ class ReactivePricePolicy:
             action=action,
             timestamp_ms=point.timestamp_ms,
             score=score,
+            reasons=tuple(reasons),
+            current_price=point.value,
+            cooldown_remaining=self.cooldown_remaining,
+        )
+
+
+class AlwaysMigratePolicy:
+    """Trivial baseline that triggers migration continuously according to cooldown."""
+
+    def __init__(self, config: Optional[AlwaysMigrateConfig] = None) -> None:
+        self.config = config or AlwaysMigrateConfig()
+        self.cooldown_remaining = 0
+
+    def evaluate(self, point: TelemetryPoint) -> MigrationDecision:
+        if self.cooldown_remaining > 0:
+            self.cooldown_remaining -= 1
+
+        action = DecisionAction.STABLE
+        reasons: List[str] = []
+
+        if self.cooldown_remaining == 0:
+            action = DecisionAction.MIGRATE
+            self.cooldown_remaining = self.config.cooldown_points
+            reasons.append("always_migrate")
+        else:
+            action = DecisionAction.OBSERVE
+
+        return MigrationDecision(
+            policy_name="always_migrate",
+            action=action,
+            timestamp_ms=point.timestamp_ms,
+            score=1.0,
+            reasons=tuple(reasons),
+            current_price=point.value,
+            cooldown_remaining=self.cooldown_remaining,
+        )
+
+
+class RollingZScorePolicy:
+    """Simple baseline using a standard rolling z-score with one tunable parameter."""
+
+    def __init__(self, config: Optional[RollingZScoreConfig] = None) -> None:
+        self.config = config or RollingZScoreConfig()
+        self.price_history: Deque[float] = deque(maxlen=self.config.rolling_window_points)
+        self.cooldown_remaining = 0
+
+    def evaluate(self, point: TelemetryPoint) -> MigrationDecision:
+        if self.cooldown_remaining > 0:
+            self.cooldown_remaining -= 1
+
+        action = DecisionAction.STABLE
+        reasons: List[str] = []
+        zscore = 0.0
+
+        if len(self.price_history) >= self.config.rolling_window_points:
+            prices = list(self.price_history)
+            mean_price = statistics.fmean(prices)
+            price_std = statistics.pstdev(prices) if len(prices) >= 2 else 0.0
+            
+            zscore = (point.value - mean_price) / price_std if price_std > 1e-9 else 0.0
+
+            if zscore >= self.config.zscore_threshold and self.cooldown_remaining == 0:
+                action = DecisionAction.MIGRATE
+                self.cooldown_remaining = self.config.cooldown_points
+                reasons.append("zscore_threshold_breach")
+            elif zscore >= self.config.zscore_threshold * 0.8:
+                action = DecisionAction.OBSERVE
+                reasons.append("zscore_elevated")
+
+        self.price_history.append(point.value)
+
+        return MigrationDecision(
+            policy_name="rolling_zscore",
+            action=action,
+            timestamp_ms=point.timestamp_ms,
+            score=zscore,
+            reasons=tuple(reasons),
+            current_price=point.value,
+            cooldown_remaining=self.cooldown_remaining,
+        )
+
+
+class RandomPolicy:
+    """Baseline that triggers migrations randomly based on a calibrated probability."""
+
+    def __init__(self, config: Optional[RandomConfig] = None) -> None:
+        self.config = config or RandomConfig()
+        self.cooldown_remaining = 0
+        # Initialize isolated random state to avoid interfering with global random
+        self.rng = random.Random(42)  
+
+    def evaluate(self, point: TelemetryPoint) -> MigrationDecision:
+        if self.cooldown_remaining > 0:
+            self.cooldown_remaining -= 1
+
+        action = DecisionAction.STABLE
+        reasons: List[str] = []
+
+        if self.cooldown_remaining == 0 and self.rng.random() < self.config.firing_probability:
+            action = DecisionAction.MIGRATE
+            self.cooldown_remaining = self.config.cooldown_points
+            reasons.append("random_trigger")
+
+        return MigrationDecision(
+            policy_name="random",
+            action=action,
+            timestamp_ms=point.timestamp_ms,
+            score=0.0,
             reasons=tuple(reasons),
             current_price=point.value,
             cooldown_remaining=self.cooldown_remaining,

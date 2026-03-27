@@ -198,6 +198,47 @@ class ReactiveBaselineConfig:
 
 
 @dataclass(frozen=True)
+class AlwaysMigrateConfig:
+    cooldown_points: int = 4
+
+    @classmethod
+    def from_mapping(cls, payload: Optional[Mapping[str, Any]]) -> "AlwaysMigrateConfig":
+        payload = payload or {}
+        return cls(cooldown_points=int(payload.get("cooldown_points", 4)))
+
+
+@dataclass(frozen=True)
+class RollingZScoreConfig:
+    rolling_window_points: int = 12
+    zscore_threshold: float = 1.75
+    cooldown_points: int = 4
+
+    @classmethod
+    def from_mapping(cls, payload: Optional[Mapping[str, Any]]) -> "RollingZScoreConfig":
+        payload = payload or {}
+        return cls(
+            rolling_window_points=int(payload.get("rolling_window_points", 12)),
+            zscore_threshold=float(payload.get("zscore_threshold", 1.75)),
+            cooldown_points=int(payload.get("cooldown_points", 4)),
+        )
+
+
+@dataclass(frozen=True)
+class RandomConfig:
+    firing_probability: float = 0.01
+    cooldown_points: int = 4
+
+    @classmethod
+    def from_mapping(cls, payload: Optional[Mapping[str, Any]]) -> "RandomConfig":
+        payload = payload or {}
+        return cls(
+            firing_probability=float(payload.get("firing_probability", 0.01)),
+            cooldown_points=int(payload.get("cooldown_points", 4)),
+        )
+
+
+
+@dataclass(frozen=True)
 class ReplayConfig:
     event_lookahead_points: int = 8
     event_spike_multiplier: float = 1.12

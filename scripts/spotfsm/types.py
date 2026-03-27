@@ -302,8 +302,13 @@ class ReplayEvent:
             "event_index": self.event_index,
             "anchor_timestamp_ms": self.anchor_timestamp_ms,
             "event_timestamp_ms": self.event_timestamp_ms,
+            "anchor_value": self.anchor_price,
+            "event_value": self.event_price,
             "anchor_price": self.anchor_price,
             "event_price": self.event_price,
+            "value_ratio": (
+                self.event_price / self.anchor_price if self.anchor_price else None
+            ),
             "price_ratio": (
                 self.event_price / self.anchor_price if self.anchor_price else None
             ),

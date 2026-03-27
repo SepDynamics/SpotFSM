@@ -1,4 +1,4 @@
-"""Phase 3 policy, replay, and operator surfaces for SpotFSM."""
+"""Legacy Spot replay surfaces retained during the repo transition."""
 
 from .datasets import (
     DEFAULT_ZENODO_RECORD_ID,

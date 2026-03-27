@@ -1,4 +1,4 @@
-"""Phase 2 data bridge for streaming infrastructure telemetry into SpotFSM."""
+"""Data bridge for streaming infrastructure telemetry into manifold windows."""
 
 from .service import BridgeObservation, BridgeService, build_bridge_service
 from .types import (

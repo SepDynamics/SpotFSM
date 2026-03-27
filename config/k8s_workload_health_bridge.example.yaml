@@ -1,0 +1,72 @@
+poll_interval_seconds: 30
+output_path: output/k8s_workload_health_bridge.jsonl
+
+encoder:
+  window_points: 64
+  stride_points: 16
+  baseline_period: 60
+
+prometheus:
+  base_url: http://localhost:9090
+  timeout_seconds: 10
+
+metrics:
+  - metric_id: workload_cpu_throttle_ratio
+    provider: prometheus
+    query: >
+      max(
+        rate(container_cpu_cfs_throttled_seconds_total{namespace="prod",pod=~"checkout-.*",container!="",container!="POD"}[5m])
+        /
+        clamp_min(rate(container_cpu_cfs_periods_total{namespace="prod",pod=~"checkout-.*",container!="",container!="POD"}[5m]), 1e-9)
+      )
+    period_seconds: 60
+    lookback_points: 96
+    labels:
+      role: workload-health
+      signal: cpu-throttle
+      namespace: prod
+      workload: checkout
+
+  - metric_id: workload_memory_pressure_ratio
+    provider: prometheus
+    query: >
+      max(
+        container_memory_working_set_bytes{namespace="prod",pod=~"checkout-.*",container!="",container!="POD"}
+        /
+        clamp_min(container_spec_memory_limit_bytes{namespace="prod",pod=~"checkout-.*",container!="",container!="POD"}, 1)
+      )
+    period_seconds: 60
+    lookback_points: 96
+    labels:
+      role: workload-health
+      signal: memory-pressure
+      namespace: prod
+      workload: checkout
+
+  - metric_id: workload_restart_velocity
+    provider: prometheus
+    query: >
+      max(
+        rate(kube_pod_container_status_restarts_total{namespace="prod",pod=~"checkout-.*"}[10m])
+      )
+    period_seconds: 60
+    lookback_points: 96
+    labels:
+      role: workload-health
+      signal: restart-velocity
+      namespace: prod
+      workload: checkout
+
+  - metric_id: workload_pending_pods
+    provider: prometheus
+    query: >
+      sum(
+        kube_pod_status_phase{namespace="prod",pod=~"checkout-.*",phase="Pending"}
+      )
+    period_seconds: 60
+    lookback_points: 96
+    labels:
+      role: workload-health
+      signal: pending-pods
+      namespace: prod
+      workload: checkout

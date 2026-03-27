@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import yaml
 
 from scripts.research.regime_manifold import TelemetryManifoldEncoder, TelemetryPoint
+from scripts.telemetry_replay import attribute_action_indices_to_events
 from scripts.telemetry_bridge.types import EncoderSettings
 
 from .datasets import (
@@ -350,39 +351,47 @@ def _summarize_policy(
         for row in rows
         if row[action_field] == DecisionAction.MIGRATE.value
     ]
-    assigned_migrations = set()
-    avoided = 0
-    lead_times_s: List[float] = []
-
-    for event in events:
-        candidates = [
-            idx
-            for idx in migration_indices
-            if event.event_index - replay_config.event_attribution_lookback_points
-            <= idx
-            < event.event_index
-        ]
-        if not candidates:
-            continue
-        chosen = min(candidates)
-        assigned_migrations.add(chosen)
-        avoided += 1
-        lead_times_s.append(
-            (event.event_timestamp_ms - int(rows[chosen]["timestamp_ms"])) / 1000.0
-        )
+    action_timestamps_ms = {
+        int(row["point_index"]): int(row["timestamp_ms"])
+        for row in rows
+        if row[action_field] == DecisionAction.MIGRATE.value
+    }
+    attribution = attribute_action_indices_to_events(
+        migration_indices,
+        action_timestamps_ms,
+        events,
+        lookback_points=replay_config.event_attribution_lookback_points,
+    )
 
     false_positive_count = sum(
-        1 for idx in migration_indices if idx not in assigned_migrations
+        1 for idx in migration_indices if idx not in attribution.assigned_action_indices
     )
     return {
         "migration_count": len(migration_indices),
         "event_count": len(events),
-        "avoided_event_count": avoided,
-        "interruption_avoidance_rate": avoided / len(events) if events else 0.0,
-        "avg_lead_time_seconds": statistics.fmean(lead_times_s) if lead_times_s else 0.0,
-        "median_lead_time_seconds": statistics.median(lead_times_s) if lead_times_s else 0.0,
+        "avoided_event_count": attribution.matched_event_count,
+        "event_avoidance_rate": (
+            attribution.matched_event_count / len(events) if events else 0.0
+        ),
+        "interruption_avoidance_rate": (
+            attribution.matched_event_count / len(events) if events else 0.0
+        ),
+        "avg_lead_time_seconds": (
+            statistics.fmean(attribution.lead_times_s)
+            if attribution.lead_times_s
+            else 0.0
+        ),
+        "median_lead_time_seconds": (
+            statistics.median(attribution.lead_times_s)
+            if attribution.lead_times_s
+            else 0.0
+        ),
         "false_positive_count": false_positive_count,
-        "precision": avoided / len(migration_indices) if migration_indices else 0.0,
+        "precision": (
+            attribution.matched_event_count / len(migration_indices)
+            if migration_indices
+            else 0.0
+        ),
     }
 
 

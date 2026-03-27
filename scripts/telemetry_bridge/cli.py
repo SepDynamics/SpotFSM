@@ -1,4 +1,4 @@
-"""CLI entrypoint for polling infrastructure telemetry into SpotFSM windows."""
+"""CLI entrypoint for polling infrastructure telemetry into manifold windows."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .types import BridgeConfig, BridgeObservation
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Poll Prometheus/CloudWatch telemetry and emit SpotFSM manifold windows."
+        description="Poll Prometheus/CloudWatch telemetry and emit manifold windows."
     )
     parser.add_argument(
         "--config",

@@ -1,6 +1,10 @@
 # SpotFSM Walkthrough
 
-This walkthrough reflects the current post-extraction state of the repository.
+This walkthrough reflects the current transition state of the repository.
+
+The generic engine and bridge are the retained core. The Spot replay package is
+still present, but it is now treated as a legacy/example path while the repo
+shifts toward workload-health detection.
 
 ## Phase 1 Recap
 
@@ -16,6 +20,7 @@ This walkthrough reflects the current post-extraction state of the repository.
   `CloudWatch` metric fetches via `GetMetricData`
 - A polling CLI at [scripts/telemetry_bridge/cli.py](/sep/SpotFSM/scripts/telemetry_bridge/cli.py) emits one JSON record per configured metric.
 - A sample bridge config lives at [config/telemetry_bridge.example.yaml](/sep/SpotFSM/config/telemetry_bridge.example.yaml).
+- A K8s-oriented workload-health bridge config now lives at [config/k8s_workload_health_bridge.example.yaml](/sep/SpotFSM/config/k8s_workload_health_bridge.example.yaml).
 
 ## Phase 3 Added
 
@@ -26,6 +31,10 @@ This walkthrough reflects the current post-extraction state of the repository.
 - The simulated operator in [scripts/spotfsm/operator.py](/sep/SpotFSM/scripts/spotfsm/operator.py) logs `MIGRATE` actions and persists replay state to memory or Redis.
 - The replay harness in [scripts/spotfsm/replay.py](/sep/SpotFSM/scripts/spotfsm/replay.py) compares SpotFSM against a reactive price-only baseline and writes CSV/JSON artifacts.
 - A sample replay config lives at [config/telemetry_policy.example.yaml](/sep/SpotFSM/config/telemetry_policy.example.yaml).
+- The first generic replay extraction now lives in [scripts/telemetry_replay](/sep/SpotFSM/scripts/telemetry_replay) and holds action-to-event attribution logic that no longer depends on Spot-specific names.
+
+This package remains useful as a source of replay/operator code, but it should
+not be treated as the validated long-term problem framing.
 
 ## Real-Data Verification
 
@@ -41,8 +50,8 @@ This walkthrough reflects the current post-extraction state of the repository.
 
 ## Next Step
 
-Phase 4 should visualize the replay and live bridge outputs together:
+The next transition milestone is not a dashboard. It is a problem-spec pivot:
 
-- expose hazard and operator state in a dashboard stream
-- surface policy explanations alongside migration decisions
-- attach real cluster actions once K8s and cloud credentials are available
+- collect K8s workload-health signals through Prometheus
+- extract a generic replay/event path from the Spot-specific package
+- evaluate against real failure labels instead of proxy `price_spike` events
